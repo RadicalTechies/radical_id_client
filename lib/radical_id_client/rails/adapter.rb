@@ -1,0 +1,167 @@
+module RadicalIdClient
+  module Rails
+    # The host owns identity mapping, role policy and membership assignment.
+    class Adapter
+      attr_reader :session_model
+
+      def initialize(session_model: false)
+        @session_model = session_model
+      end
+
+      def active?(user)
+        user && (!user.respond_to?(:disabled?) || !user.disabled?) &&
+          (!user.respond_to?(:active?) || user.active?)
+      end
+
+      def administrator?(user)
+        active?(user) && user.admin? && (!user.respond_to?(:read_only?) || !user.read_only?)
+      end
+
+      def signed_in_user(request)
+        if session_model
+          row = ::Session.usable.find_by(id: request.cookie_jar.signed[:session_id])
+          row&.user if row && active?(row.user)
+        elsif request.session[:authenticated_at].to_i >= 12.hours.ago.to_i
+          user = ::User.find_by(id: request.session[:user_id])
+          user if active?(user)
+        end
+      end
+
+      def deadline(request)
+        if session_model
+          ::Session.usable.find(request.cookie_jar.signed[:session_id]).created_at + ::Session::MAX_LIFETIME
+        else
+          Time.at(request.session[:authenticated_at].to_i) + 12.hours
+        end
+      end
+
+      def source_valid?(record)
+        return true unless session_model
+        ::Session.usable.exists?(id: record.source_session_id, user_id: record.actor_id)
+      end
+
+      def subject(user)
+        user.respond_to?(:uuid) ? user.uuid : user.respond_to?(:uid) ? user.uid :
+          user.respond_to?(:oidc_subject) ? user.oidc_subject : user.oidc_sub.to_s.split("|").last
+      end
+
+      def client
+        Client.new(origin: ENV["RADICAL_ID_API_ORIGIN"].presence || ENV["OIDC_ISSUER"], token: ENV["RADICAL_ID_API_TOKEN"])
+      end
+
+      def provisionable? = ENV["RADICAL_ID_API_TOKEN"].present?
+      def customers? = false
+      def landing_path(user, inbox: nil) = "/"
+      def blocked_path?(path)
+        path.match?(%r{\A/(auth|oauth|saml|oidc|webauthn|magic_link|invitation|welcome|onboarding|profile|settings|mcp|good_job)(/|\z)}) ||
+          path.match?(%r{\A/(admin/)?(users|memberships|api_tokens|oauth_clients|mcp_tokens|application_api_credentials)(/|\z)}) ||
+          path.match?(%r{\A/admin/(system|jobs|good_job)(/|\z)})
+      end
+
+      def logout_request?(request)
+        request.delete? && request.path.match?(%r{/(session|sessions|sign_out|logout|sign-out)\z})
+      end
+
+      def start(request, target, inbox: nil)
+        raise Forbidden, "Already impersonating" if request.session[:radical_id_impersonation_id]
+        actor = signed_in_user(request)
+        raise Forbidden, "Administrator access required" unless administrator?(actor)
+        raise Ineligible, "Choose another active account" unless active?(target) && !(target.is_a?(::User) && target.id == actor.id)
+        record = Impersonation.create!(actor_id: actor.id, target_id: target.id, target_type: target.class.name,
+          expires_at: [30.minutes.from_now, deadline(request)].min, actor_expires_at: deadline(request),
+          source_session_id: session_model ? request.cookie_jar.signed[:session_id] : nil,
+          authenticated_at: request.session[:authenticated_at], started_at: Time.current)
+        event!("impersonation.started", actor: actor, target: target, request: request, impersonation: record)
+        request.reset_session
+        request.session[:radical_id_impersonation_id] = record.id
+        establish_target(request, target, record)
+        record
+      end
+
+      def establish_target(request, target, record)
+        if session_model
+          attrs = { user: target, user_agent: request.user_agent, ip_address: request.remote_ip,
+            created_at: ::Session.find(record.source_session_id).created_at }
+          attrs[:authentication_method] = "impersonation" if ::Session.column_names.include?("authentication_method")
+          row = ::Session.create!(attrs)
+          record.update!(target_session_id: row.id)
+          request.cookie_jar.signed[:session_id] = { value: row.id, httponly: true, same_site: :lax, secure: request.ssl? }
+        elsif record.target_type == "Customer"
+          request.session[:customer_id] = target.id
+          request.session[:customer_authenticated_at] = record.authenticated_at
+        else
+          request.session[:user_id] = target.id
+        end
+        request.session[:authenticated_at] = record.authenticated_at || record.started_at.to_i
+      end
+
+      def finish(request, record, reason:, restore: true)
+        actor = record.actor
+        can_restore = restore && administrator?(actor) && source_valid?(record) && record.actor_expires_at > Time.current
+        record.update!(ended_at: Time.current, end_reason: reason) unless record.ended_at
+        ::Session.where(id: record.target_session_id).delete_all if session_model
+        request.reset_session
+        request.cookie_jar.delete(:session_id) if session_model
+        if can_restore
+          if session_model
+            request.cookie_jar.signed[:session_id] = { value: record.source_session_id, httponly: true, same_site: :lax, secure: request.ssl? }
+          else
+            request.session[:user_id] = actor.id
+          end
+          request.session[:authenticated_at] = record.authenticated_at
+        elsif session_model && !restore
+          ::Session.where(id: record.source_session_id).delete_all
+        end
+        event!("impersonation.ended", actor: actor, target: record.target, request: request, impersonation: record, details: { reason: reason })
+        can_restore
+      end
+
+      def event!(action, actor:, target: nil, request:, impersonation: nil, details: {})
+        AdminEvent.create!(action: action, actor_id: actor&.id, target_id: target&.id, target_type: target&.class&.name,
+          impersonation_id: impersonation&.id, request_id: request.request_id, details: details)
+      end
+
+      def validate_profile!(profile, kind:)
+        raise Ineligible, "The Radical ID user must be active and verified" unless profile.eligible && profile.email_verified
+      end
+
+      def identity_for(profile, kind:)
+        model = kind == "Customer" ? ::Customer : ::User
+        identity = identity_attributes(profile, kind: kind)
+        user = model.find_by(identity)
+        by_email = model.find_by(email: profile.email.strip.downcase)
+        if by_email && by_email != user
+          # Only an unbound provisional row may be adopted by verified email.
+          bound = identity.keys.any? { |key| by_email.public_send(key).present? }
+          raise Conflict, "This email belongs to a different identity. Resolve it before adding the user." if bound || user
+          user = by_email
+        end
+        user || model.new
+      end
+
+      def provision!(profile, kind:)
+        validate_profile!(profile, kind: kind)
+        user = identity_for(profile, kind: kind)
+        user.assign_attributes(identity_attributes(profile, kind: kind).merge(name: profile.name, email: profile.email))
+        prepare_user(user, profile)
+        user.save!
+        user
+      end
+
+      def prepare_user(user, profile); end
+      def access_fields(kind) = []
+      def validate_access!(params, kind:)
+        raise Ineligible, "Invalid account type" unless kind == "User" || (customers? && kind == "Customer")
+        fields = access_fields(kind)
+        submitted = params[:access] || {}
+        raise Ineligible, "Unknown access field" unless (submitted.keys.map(&:to_s) - fields.map { |field| field[:key].to_s }).empty?
+        fields.each do |field|
+          values = Array(submitted[field[:key].to_s]).reject(&:blank?).map(&:to_s)
+          allowed = field[:options].map { |_, value| value.to_s }
+          raise Ineligible, "Invalid access selection" unless (values - allowed).empty? && (field[:multiple] || values.size <= 1)
+        end
+      end
+      def assign_access!(user, params, actor:); end
+    end
+  end
+end

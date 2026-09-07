@@ -1,0 +1,4 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>User administration</title><%= csrf_meta_tags %>
+<style>body{font:16px system-ui,sans-serif;color:#17253b;background:#f5f6f8;margin:0}main{max-width:960px;margin:2rem auto;padding:2rem;background:white;border-radius:12px}a{color:#174a86}input,select,button{font:inherit;padding:.5rem;margin:.25rem}button,input[type=submit]{cursor:pointer;background:#17253b;color:white;border:0;border-radius:5px}label{display:block;margin-top:.7rem}table{width:100%;border-collapse:collapse}td,th{padding:.65rem;text-align:left;border-bottom:1px solid #ddd}.notice{padding:1rem;background:#fff0c2}fieldset{margin:1rem 0;border:1px solid #ccd}</style></head>
+<body><main><a href="/">Back to application</a><% flash.each_value do |message| %><p class="notice" role="status"><%= message %></p><% end %><%= yield %></main></body></html>

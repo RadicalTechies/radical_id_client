@@ -1,0 +1,26 @@
+<h1>User administration</h1>
+<% if @impersonation %>
+  <p class="notice">You are impersonating <%= @impersonation.target&.email %>.</p>
+  <%= button_to "Return to admin", "/identity_admin/stop", method: :delete %>
+<% else %>
+  <% if RadicalIdClient::Rails.adapter.customers? %><p><a href="/identity_admin">Staff</a> · <a href="/identity_admin?kind=Customer">Customers</a></p><% end %>
+  <h2>Add from Radical ID</h2>
+  <% if RadicalIdClient::Rails.adapter.provisionable? %>
+    <%= form_with url: "/identity_admin/lookup", local: true do |f| %>
+      <%= f.hidden_field :kind, value: @kind %><%= f.label :email %><%= f.email_field :email, required: true %><%= f.submit "Look up email" %>
+    <% end %>
+  <% else %><p>Provisioning is not configured. For Radical ID itself, use its existing invitations and user management.</p><% end %>
+  <h2>Existing <%= @kind == "Customer" ? "customers" : "users" %></h2>
+  <%= form_with url: "/identity_admin", method: :get, local: true do |f| %><%= f.hidden_field :kind, value: @kind %><%= f.label :q, "Search email" %><%= f.search_field :q, value: params[:q] %><%= f.submit "Search" %><% end %>
+  <p>Showing up to 100 results. Search to find another account. Impersonation lasts up to 30 minutes and actions are audited.</p>
+  <table><thead><tr><th>Name</th><th>Email</th><th>Action</th></tr></thead><tbody>
+  <% @users.each do |user| %><tr><td><%= user.name %></td><td><%= user.email %></td><td>
+    <% if RadicalIdClient::Rails.adapter.active?(user) && !(@kind == "User" && user.id == @actor.id) %>
+      <%= form_with url: "/identity_admin/impersonate", local: true do |f| %>
+        <%= f.hidden_field :kind, value: @kind %><%= f.hidden_field :user_id, value: user.id %>
+        <% if @kind == "Customer" %><%= f.label :inbox_id, "Portal inbox" %><%= f.collection_select :inbox_id, ::Inbox.order(:name), :id, :name %><% end %>
+        <%= f.submit "Impersonate" %>
+      <% end %>
+    <% end %>
+  </td></tr><% end %></tbody></table>
+<% end %>

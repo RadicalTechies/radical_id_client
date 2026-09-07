@@ -1,0 +1,15 @@
+<h1>Review user</h1><p><strong><%= @profile.name %></strong> · <%= @profile.email %></p>
+<p>This grants access to this application in Radical ID and sets up the local account. Existing access is preserved unless you select additions below.</p>
+<%= form_with url: "/identity_admin/provision", local: true do |f| %>
+  <%= f.hidden_field :review, value: @review %>
+  <% RadicalIdClient::Rails.adapter.access_fields(@kind).each do |field| %>
+    <fieldset><legend><%= field.fetch(:label) %></legend>
+    <% if field[:multiple] %>
+      <% field.fetch(:options).each do |label, value| %><label><%= check_box_tag "access[#{field[:key]}][]", value %> <%= label %></label><% end %>
+    <% else %>
+      <%= select_tag "access[#{field[:key]}]", options_for_select(field.fetch(:options)), include_blank: "Keep existing / ordinary default" %>
+    <% end %>
+    </fieldset>
+  <% end %>
+  <%= f.submit "Add user and grant access" %>
+<% end %>
