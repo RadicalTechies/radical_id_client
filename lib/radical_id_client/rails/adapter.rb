@@ -41,9 +41,22 @@ module RadicalIdClient
       end
 
       def subject(user)
-        user.respond_to?(:uuid) ? user.uuid : user.respond_to?(:uid) ? user.uid :
-          user.respond_to?(:oidc_subject) ? user.oidc_subject : user.oidc_sub.to_s.split("|").last
+        key = %i[uuid uid oidc_subject oidc_sub].find { |name| user.respond_to?(name) && !user.public_send(name).to_s.empty? }
+        raise ConfigurationError, "The host adapter must supply an administrator subject" unless key
+        user.public_send(key).to_s.split("|").last
       end
+
+      def identity_attributes(profile, kind:)
+        raise ConfigurationError, "The host adapter must implement identity_attributes"
+      end
+
+      def model_for(kind)
+        return ::User if kind == "User"
+        return ::Customer if kind == "Customer" && customers?
+        raise Ineligible, "Invalid account type"
+      end
+
+      def portal_inboxes = []
 
       def client
         Client.new(origin: ENV["RADICAL_ID_API_ORIGIN"].presence || ENV["OIDC_ISSUER"], token: ENV["RADICAL_ID_API_TOKEN"])
@@ -128,7 +141,7 @@ module RadicalIdClient
       end
 
       def identity_for(profile, kind:)
-        model = kind == "Customer" ? ::Customer : ::User
+        model = model_for(kind)
         identity = identity_attributes(profile, kind: kind)
         user = model.find_by(identity)
         by_email = model.find_by(email: profile.email.strip.downcase)
@@ -145,7 +158,7 @@ module RadicalIdClient
       def provision!(profile, kind:)
         validate_profile!(profile, kind: kind)
         user = identity_for(profile, kind: kind)
-        user.assign_attributes(identity_attributes(profile, kind: kind).merge(name: profile.name, email: profile.email))
+        user.assign_attributes(identity_attributes(profile, kind: kind).merge(name: profile.name, email: profile.email.strip.downcase))
         prepare_user(user, profile)
         user.save!
         user

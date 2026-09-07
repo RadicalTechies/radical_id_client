@@ -18,7 +18,7 @@
     <% if RadicalIdClient::Rails.adapter.active?(user) && !(@kind == "User" && user.id == @actor.id) %>
       <%= form_with url: "/identity_admin/impersonate", local: true do |f| %>
         <%= f.hidden_field :kind, value: @kind %><%= f.hidden_field :user_id, value: user.id %>
-        <% if @kind == "Customer" %><%= f.label :inbox_id, "Portal inbox" %><%= f.collection_select :inbox_id, ::Inbox.order(:name), :id, :name %><% end %>
+        <% if @kind == "Customer" && RadicalIdClient::Rails.adapter.portal_inboxes.any? %><%= f.label :inbox_id, "Portal inbox" %><%= f.collection_select :inbox_id, RadicalIdClient::Rails.adapter.portal_inboxes, :id, :name %><% end %>
         <%= f.submit "Impersonate" %>
       <% end %>
     <% end %>

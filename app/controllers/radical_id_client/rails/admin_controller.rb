@@ -9,7 +9,7 @@ module RadicalIdClient
 
       def index
         @kind = params[:kind] == "Customer" && adapter.customers? ? "Customer" : "User"
-        @users = (@kind == "Customer" ? ::Customer : ::User).order(:email)
+        @users = adapter.model_for(@kind).order(:email)
         if params[:q].present?
           @users = @users.where("email ILIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].to_s)}%")
         end
@@ -39,7 +39,7 @@ module RadicalIdClient
         adapter.identity_for(profile, kind: data[:kind])
         profile = adapter.client.ensure_application_access(sub: profile.sub, actor_sub: adapter.subject(@actor), request_id: request.request_id)
         @central_granted = true
-        user = ::User.transaction do
+        user = adapter.model_for(data[:kind]).transaction do
           result = adapter.provision!(profile, kind: data[:kind])
           adapter.assign_access!(result, params, actor: @actor)
           adapter.event!("user.provisioned", actor: @actor, target: result, request: request)
@@ -51,7 +51,7 @@ module RadicalIdClient
       def impersonate
         kind = params[:kind].to_s
         adapter.validate_access!({}, kind: kind)
-        target = (kind == "Customer" ? ::Customer : ::User).find(params[:user_id])
+        target = adapter.model_for(kind).find(params[:user_id])
         destination = adapter.landing_path(target, inbox: params[:inbox_id])
         adapter.start(request, target)
         redirect_to destination, status: :see_other
