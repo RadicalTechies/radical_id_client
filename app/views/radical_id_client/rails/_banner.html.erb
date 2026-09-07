@@ -1,0 +1,11 @@
+<% rid_record = RadicalIdClient::Rails::Impersonation.find_by(id: session[:radical_id_impersonation_id]) if session[:radical_id_impersonation_id] %>
+<% if rid_record&.live? %>
+  <%= stylesheet_link_tag "radical_id_admin" %>
+  <aside role="status" class="rid-banner">
+    Impersonating <strong><%= rid_record.target&.email %></strong>. Actions are audited.
+    <%= button_to "Return to admin", "/identity_admin/stop", method: :delete %>
+  </aside>
+<% elsif RadicalIdClient::Rails.adapter.administrator?(RadicalIdClient::Rails.adapter.signed_in_user(request)) %>
+  <%= stylesheet_link_tag "radical_id_admin" %>
+  <nav aria-label="User administration" class="rid-admin-link"><%= link_to "User administration", "/identity_admin" %></nav>
+<% end %>

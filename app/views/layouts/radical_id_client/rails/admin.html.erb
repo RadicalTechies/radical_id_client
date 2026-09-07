@@ -1,0 +1,4 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>User administration</title><%= csrf_meta_tags %>
+<%= stylesheet_link_tag "radical_id_admin" %></head>
+<body class="rid-admin"><main><a href="/">Back to application</a><% flash.each do |_key, message| %><p class="notice" role="status"><%= message %></p><% end %><%= yield %></main></body></html>

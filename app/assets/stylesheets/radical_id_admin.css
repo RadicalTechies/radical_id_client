@@ -1,0 +1,16 @@
+body.rid-admin { font: 16px system-ui, sans-serif; color: #17253b; background: #f5f6f8; margin: 0; }
+.rid-admin main { max-width: 960px; margin: 2rem auto; padding: 2rem; background: white; border-radius: 12px; }
+.rid-admin a { color: #174a86; }
+.rid-admin input, .rid-admin select, .rid-admin button { font: inherit; padding: .5rem; margin: .25rem; }
+.rid-admin button, .rid-admin input[type=submit] { cursor: pointer; background: #17253b; color: white; border: 0; border-radius: 5px; }
+.rid-admin label { display: block; margin-top: .7rem; }
+.rid-admin table { width: 100%; border-collapse: collapse; }
+.rid-admin td, .rid-admin th { padding: .65rem; text-align: left; border-bottom: 1px solid #ddd; }
+.rid-admin .notice { padding: 1rem; background: #fff0c2; }
+.rid-admin fieldset { margin: 1rem 0; border: 1px solid #ccd; }
+.rid-banner { background: #ffe08a; color: #17253b; padding: 12px; text-align: center; position: sticky; top: 0; z-index: 9999; flex-shrink: 0; }
+.rid-banner form { display: inline; }
+.rid-banner button { margin-left: 12px; padding: 6px 12px; background: #17253b; color: white; border-radius: 4px; cursor: pointer; }
+.rid-admin-link { background: #17253b; color: white; padding: 8px 16px; flex-shrink: 0; }
+.rid-admin-link a { color: white; }
+@media (max-width: 600px) { .rid-admin main { margin: 0; padding: 1rem; overflow-x: auto; } }
