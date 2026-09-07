@@ -61,6 +61,9 @@ module RadicalIdClient
     end
 
     def request(method, path, body, actor_sub, request_id)
+      unless actor_sub.to_s.match?(/\A[a-zA-Z0-9_-]{1,128}\z/)
+        raise ConfigurationError, "A valid administrator subject is required"
+      end
       headers = { "Authorization" => "Bearer #{@token}", "Content-Type" => "application/json",
         "Accept" => "application/json", "X-Actor-Subject" => actor_sub.to_s, "X-Request-ID" => request_id.to_s }
       attempts = 0

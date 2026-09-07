@@ -22,7 +22,7 @@ module RadicalIdClient
           request.cookie_jar.delete(:session_id) if adapter.session_model
           return redirect("/")
         end
-        unless record.live? && adapter.administrator?(record.actor) && adapter.active?(record.target) && adapter.source_valid?(record)
+        unless record.live? && adapter.administrator?(record.actor) && adapter.active?(record.target) && adapter.source_valid?(record) && adapter.target_session_valid?(request, record)
           restored = adapter.finish(request, record, reason: "expired_or_revoked")
           return redirect(restored ? "/identity_admin" : "/")
         end

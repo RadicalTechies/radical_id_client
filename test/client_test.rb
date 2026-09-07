@@ -65,4 +65,11 @@ class ClientTest < Minitest::Test
     assert result.frozen?
     assert result.email.frozen?
   end
+
+  def test_actor_is_validated_before_transport
+    c = client { |*| flunk "invalid audit actor reached transport" }
+    [ "", "bad\nheader", "a" * 129 ].each do |actor|
+      assert_raises(RadicalIdClient::ConfigurationError) { c.fetch_user(sub: "abc", actor_sub: actor) }
+    end
+  end
 end

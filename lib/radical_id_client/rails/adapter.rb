@@ -19,7 +19,7 @@ module RadicalIdClient
 
       def signed_in_user(request)
         if session_model
-          row = ::Session.usable.find_by(id: request.cookie_jar.signed[:session_id])
+          row = session_class.usable.find_by(id: request.cookie_jar.signed[:session_id])
           row&.user if row && active?(row.user)
         elsif request.session[:authenticated_at].to_i >= 12.hours.ago.to_i
           user = ::User.find_by(id: request.session[:user_id])
@@ -29,7 +29,7 @@ module RadicalIdClient
 
       def deadline(request)
         if session_model
-          ::Session.usable.find(request.cookie_jar.signed[:session_id]).created_at + ::Session::MAX_LIFETIME
+          source_session!(request).created_at + session_class::MAX_LIFETIME
         else
           Time.at(request.session[:authenticated_at].to_i) + 12.hours
         end
@@ -77,30 +77,67 @@ module RadicalIdClient
         request.delete? && request.path.match?(%r{/(session|sessions|sign_out|logout|sign-out)\z})
       end
 
+      def session_class
+        unless defined?(::Session) && ::Session.respond_to?(:usable) && ::Session.const_defined?(:MAX_LIFETIME)
+          raise ConfigurationError, "Session adapters require Session.usable and Session::MAX_LIFETIME"
+        end
+        ::Session
+      end
+
+      def source_session!(request)
+        session_class.usable.find_by(id: request.cookie_jar.signed[:session_id]) ||
+          raise(Forbidden, "Your session has expired. Sign in again.")
+      end
+
+      def target_session_valid?(request, record)
+        if session_model
+          request.cookie_jar.signed[:session_id].to_s == record.target_session_id.to_s &&
+            session_class.usable.exists?(id: record.target_session_id, user_id: record.target_id)
+        elsif record.target_type == "Customer"
+          request.session[:customer_id].to_s == record.target_id.to_s && request.session[:user_id].blank?
+        else
+          request.session[:user_id].to_s == record.target_id.to_s
+        end
+      end
+
       def start(request, target, inbox: nil)
         raise Forbidden, "Already impersonating" if request.session[:radical_id_impersonation_id]
         actor = signed_in_user(request)
         raise Forbidden, "Administrator access required" unless administrator?(actor)
         raise Ineligible, "Choose another active account" unless active?(target) && !(target.is_a?(::User) && target.id == actor.id)
-        record = Impersonation.create!(actor_id: actor.id, target_id: target.id, target_type: target.class.name,
-          expires_at: [ 30.minutes.from_now, deadline(request) ].min, actor_expires_at: deadline(request),
-          source_session_id: session_model ? request.cookie_jar.signed[:session_id] : nil,
-          authenticated_at: request.session[:authenticated_at], started_at: Time.current)
-        event!("impersonation.started", actor: actor, target: target, request: request, impersonation: record)
+        source = session_model ? source_session!(request) : nil
+        record = Impersonation.transaction do
+          # Hold the original login row until the temporary session and audit
+          # record are durable. No browser identity is changed on a failed write.
+          source&.lock!
+          if source && !session_class.usable.exists?(id: source.id, user_id: actor.id)
+            raise Forbidden, "Your session has expired. Sign in again."
+          end
+          raise Forbidden, "Administrator access required" unless administrator?(actor.reload)
+          expires = source ? source.created_at + session_class::MAX_LIFETIME : deadline(request)
+          raise Forbidden, "Your session has expired. Sign in again." unless expires > Time.current
+          entry = Impersonation.create!(actor_id: actor.id, target_id: target.id, target_type: target.class.name,
+            expires_at: [ 30.minutes.from_now, expires ].min, actor_expires_at: expires,
+            source_session_id: source&.id, authenticated_at: request.session[:authenticated_at], started_at: Time.current)
+          if source
+            attrs = { user: target, user_agent: request.user_agent, ip_address: request.remote_ip, created_at: source.created_at }
+            attrs[:authentication_method] = "impersonation" if session_class.column_names.include?("authentication_method")
+            entry.update!(target_session_id: session_class.create!(attrs).id)
+          end
+          event!("impersonation.started", actor: actor, target: target, request: request, impersonation: entry)
+          entry
+        end
         request.reset_session
         request.session[:radical_id_impersonation_id] = record.id
         establish_target(request, target, record)
         record
+      rescue ActiveRecord::RecordNotFound
+        raise Forbidden, "Your session or the target account is no longer available."
       end
 
       def establish_target(request, target, record)
         if session_model
-          attrs = { user: target, user_agent: request.user_agent, ip_address: request.remote_ip,
-            created_at: ::Session.find(record.source_session_id).created_at }
-          attrs[:authentication_method] = "impersonation" if ::Session.column_names.include?("authentication_method")
-          row = ::Session.create!(attrs)
-          record.update!(target_session_id: row.id)
-          request.cookie_jar.signed[:session_id] = { value: row.id, httponly: true, same_site: :lax, secure: request.ssl? }
+          request.cookie_jar.signed[:session_id] = { value: record.target_session_id, httponly: true, same_site: :lax, secure: request.ssl? }
         elsif record.target_type == "Customer"
           request.session[:customer_id] = target.id
           request.session[:customer_authenticated_at] = record.authenticated_at
