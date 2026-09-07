@@ -136,6 +136,7 @@ module RadicalIdClient
           raise Conflict, "This email belongs to a different identity. Resolve it before adding the user." if bound || user
           user = by_email
         end
+        raise Ineligible, "This local account is disabled" if user && !active?(user)
         user || model.new
       end
 

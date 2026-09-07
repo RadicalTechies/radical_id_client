@@ -37,7 +37,7 @@ module RadicalIdClient
         # Detect local conflicts before making a remote grant. Recheck inside
         # the transaction as the remote call cannot share our database lock.
         adapter.identity_for(profile, kind: data[:kind])
-        adapter.client.ensure_application_access(sub: profile.sub, actor_sub: adapter.subject(@actor), request_id: request.request_id)
+        profile = adapter.client.ensure_application_access(sub: profile.sub, actor_sub: adapter.subject(@actor), request_id: request.request_id)
         @central_granted = true
         user = ::User.transaction do
           result = adapter.provision!(profile, kind: data[:kind])
