@@ -53,9 +53,11 @@ module RadicalIdClient
       def customers? = false
       def landing_path(user, inbox: nil) = "/"
       def blocked_path?(path)
-        path.match?(%r{\A/(auth|oauth|saml|oidc|webauthn|magic_link|invitation|welcome|onboarding|profile|settings|mcp|good_job)(/|\z)}) ||
-          path.match?(%r{\A/(admin/)?(users|memberships|api_tokens|oauth_clients|mcp_tokens|application_api_credentials)(/|\z)}) ||
-          path.match?(%r{\A/admin/(system|jobs|good_job)(/|\z)})
+        protected_segments = %w[auth oauth saml oidc webauthn magic_link invitation welcome onboarding profile settings
+          mcp good_job jobs users memberships branch_memberships api_tokens oauth_clients mcp_tokens
+          application_api_credentials credentials identities google_accounts oauth_connections mcp_connections
+          imap_accounts permissions system]
+        (path.split("/") & protected_segments).any?
       end
 
       def logout_request?(request)

@@ -66,7 +66,10 @@ module RadicalIdClient
         JSON.parse(text)
       rescue Timeout::Error, IOError, SystemCallError, SocketError, Net::HTTPBadResponse, OpenSSL::SSL::SSLError
         attempts += 1
-        retry if attempts < 2
+        if attempts < 2
+          sleep(0.1)
+          retry
+        end
         raise Unavailable, "Radical ID could not be reached"
       rescue JSON::ParserError
         raise InvalidResponse, "Radical ID returned invalid JSON"
@@ -79,7 +82,7 @@ module RadicalIdClient
           [true, false].include?(data["email_verified"]) && [true, false].include?(data["eligible"])
         raise InvalidResponse, "Radical ID returned an invalid profile"
       end
-      Profile.new(**Profile.members.to_h { |k| [k, data[k.to_s]] })
+      Profile.new(**Profile.members.to_h { |k| [k, data[k.to_s]&.freeze] })
     end
 
     def transmit(method, uri, headers, body)

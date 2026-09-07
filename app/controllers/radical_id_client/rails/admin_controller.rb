@@ -29,7 +29,7 @@ module RadicalIdClient
       end
 
       def provision
-        data = verifier.verified(params[:review], purpose: :provision)
+        data = verifier.verified(params[:review], purpose: :provision)&.with_indifferent_access
         raise Ineligible, "The profile review expired. Look up the email again." unless data && data[:actor_id] == @actor.id
         adapter.validate_access!(params, kind: data[:kind])
         profile = adapter.client.fetch_user(sub: data[:sub], actor_sub: adapter.subject(@actor), request_id: request.request_id)

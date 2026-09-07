@@ -27,7 +27,7 @@ module RadicalIdClient
           return redirect(restored ? "/identity_admin" : "/")
         end
         # Stop is deliberately reachable without the target's admin permissions.
-        if request.path != "/identity_admin/stop" && !adapter.logout_request?(request) && adapter.blocked_path?(request.path)
+        if request.path != "/identity_admin/stop" && !adapter.logout_request?(request) && adapter.blocked_path?(Rack::Utils.unescape_path(request.path))
           return [403, {"content-type" => "text/html; charset=utf-8", "cache-control" => "no-store"},
             ['<p>This action is unavailable while impersonating.</p><a href="/identity_admin">Return to admin controls</a>']]
         end
