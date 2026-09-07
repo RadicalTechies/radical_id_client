@@ -26,7 +26,7 @@ module RadicalIdClient
       @origin = URI.parse(origin.to_s)
       unless @origin.is_a?(URI::HTTP) && @origin.host &&
           (@origin.scheme == "https" || (allow_http && %w[localhost 127.0.0.1 ::1].include?(@origin.hostname))) &&
-          !@origin.userinfo && !@origin.query && !@origin.fragment && ["", "/"].include?(@origin.path)
+          !@origin.userinfo && !@origin.query && !@origin.fragment && [ "", "/" ].include?(@origin.path)
         raise ConfigurationError, "Radical ID needs a fixed HTTPS origin"
       end
       raise ConfigurationError, "Radical ID service credential is missing" if token.to_s.empty?
@@ -41,14 +41,19 @@ module RadicalIdClient
     end
 
     def fetch_user(sub:, actor_sub:, request_id: SecureRandom.uuid)
-      profile(request(:get, "/api/v1/users/#{subject_path(sub)}", nil, actor_sub, request_id))
+      checked_subject(profile(request(:get, "/api/v1/users/#{subject_path(sub)}", nil, actor_sub, request_id)), sub)
     end
 
     def ensure_application_access(sub:, actor_sub:, request_id: SecureRandom.uuid)
-      profile(request(:put, "/api/v1/application/users/#{subject_path(sub)}", {}, actor_sub, request_id))
+      checked_subject(profile(request(:put, "/api/v1/application/users/#{subject_path(sub)}", {}, actor_sub, request_id)), sub)
     end
 
     private
+
+    def checked_subject(result, sub)
+      raise InvalidResponse, "Radical ID returned a different subject" unless result.sub == sub
+      result
+    end
 
     def subject_path(sub)
       raise ArgumentError, "Invalid subject" unless sub.to_s.match?(/\A[a-zA-Z0-9_-]{1,128}\z/)
@@ -79,10 +84,10 @@ module RadicalIdClient
     def profile(data)
       unless data.is_a?(Hash) && %w[issuer sub name email].all? { |k| data[k].is_a?(String) && !data[k].empty? } &&
           data["issuer"].delete_suffix("/") == @origin.to_s.delete_suffix("/") &&
-          [true, false].include?(data["email_verified"]) && [true, false].include?(data["eligible"])
+          [ true, false ].include?(data["email_verified"]) && [ true, false ].include?(data["eligible"])
         raise InvalidResponse, "Radical ID returned an invalid profile"
       end
-      Profile.new(**Profile.members.to_h { |k| [k, data[k.to_s]&.freeze] })
+      Profile.new(**Profile.members.to_h { |k| [ k, data[k.to_s]&.freeze ] })
     end
 
     def transmit(method, uri, headers, body)
@@ -103,7 +108,7 @@ module RadicalIdClient
           raise InvalidResponse, "Radical ID response is too large" if text.bytesize > MAX_RESPONSE_BYTES
         end
       end
-      [status, text]
+      [ status, text ]
     end
   end
 end

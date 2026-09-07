@@ -70,7 +70,7 @@ module RadicalIdClient
         raise Forbidden, "Administrator access required" unless administrator?(actor)
         raise Ineligible, "Choose another active account" unless active?(target) && !(target.is_a?(::User) && target.id == actor.id)
         record = Impersonation.create!(actor_id: actor.id, target_id: target.id, target_type: target.class.name,
-          expires_at: [30.minutes.from_now, deadline(request)].min, actor_expires_at: deadline(request),
+          expires_at: [ 30.minutes.from_now, deadline(request) ].min, actor_expires_at: deadline(request),
           source_session_id: session_model ? request.cookie_jar.signed[:session_id] : nil,
           authenticated_at: request.session[:authenticated_at], started_at: Time.current)
         event!("impersonation.started", actor: actor, target: target, request: request, impersonation: record)

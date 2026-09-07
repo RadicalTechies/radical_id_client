@@ -28,8 +28,8 @@ module RadicalIdClient
         end
         # Stop is deliberately reachable without the target's admin permissions.
         if request.path != "/identity_admin/stop" && !adapter.logout_request?(request) && adapter.blocked_path?(Rack::Utils.unescape_path(request.path))
-          return [403, {"content-type" => "text/html; charset=utf-8", "cache-control" => "no-store"},
-            ['<p>This action is unavailable while impersonating.</p><a href="/identity_admin">Return to admin controls</a>']]
+          return [ 403, { "content-type" => "text/html; charset=utf-8", "cache-control" => "no-store" },
+            [ '<p>This action is unavailable while impersonating.</p><a href="/identity_admin">Return to admin controls</a>' ] ]
         end
         Context.set(audit: { "actor_id" => record.actor_id, "target_id" => record.target_id,
           "target_type" => record.target_type, "impersonation_id" => record.id }) do
@@ -38,14 +38,14 @@ module RadicalIdClient
             adapter.finish(request, record, reason: "logout", restore: false)
           end
           adapter.event!("impersonation.request", actor: record.actor, target: record.target, request: request,
-            impersonation: record, details: { method: request.request_method, path: request.path, status: response[0] })
+            impersonation: record, details: { method: request.request_method, controller: request.path_parameters[:controller], action: request.path_parameters[:action], status: response[0] })
           response
         end
       end
 
       private
 
-      def redirect(path) = [303, {"location" => path, "content-type" => "text/html", "cache-control" => "no-store"}, []]
+      def redirect(path) = [ 303, { "location" => path, "content-type" => "text/html", "cache-control" => "no-store" }, [] ]
     end
   end
 end

@@ -81,7 +81,13 @@ module RadicalIdClient
       end
 
       def identity_error(error)
-        message = error.message
+        message = case error
+        when NotFound then "No Radical ID account was found. Ask a Radical ID administrator to invite them first."
+        when Unauthorized, Forbidden then "The Radical ID credential does not permit this operation. Contact an administrator."
+        when Unavailable then "Radical ID is unavailable. Try again shortly."
+        when RateLimited then "Too many lookups. Wait a minute and try again."
+        else error.message
+        end
         message = "Radical ID access was granted, but local setup failed. Retry this lookup to finish setup." if @central_granted
         redirect_to "/identity_admin", alert: message
       end

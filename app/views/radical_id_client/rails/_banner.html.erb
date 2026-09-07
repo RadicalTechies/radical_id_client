@@ -2,7 +2,7 @@
 <% if rid_record&.live? %>
   <aside role="status" style="background:#ffe08a;color:#17253b;padding:12px;text-align:center;position:sticky;top:0;z-index:9999">
     Impersonating <strong><%= rid_record.target&.email %></strong>. Actions are audited.
-    <%= button_to "Return to admin", "/identity_admin/stop", method: :delete, form: { style: "display:inline" } %>
+    <%= button_to "Return to admin", "/identity_admin/stop", method: :delete, style: "margin-left:12px;padding:6px 12px;background:#17253b;color:white;border-radius:4px", form: { style: "display:inline" } %>
   </aside>
 <% elsif RadicalIdClient::Rails.adapter.administrator?(RadicalIdClient::Rails.adapter.signed_in_user(request)) %>
   <nav aria-label="User administration" style="background:#17253b;color:white;padding:8px 16px"><%= link_to "User administration", "/identity_admin", style: "color:white" %></nav>
